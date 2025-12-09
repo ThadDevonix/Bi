@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { format, startOfDay } from 'date-fns';
+import { addDays, format, startOfDay } from 'date-fns';
 import { Bar, Line } from 'react-chartjs-2';
 import type { ChartOptions } from 'chart.js';
 import html2canvas from 'html2canvas';
@@ -90,9 +90,17 @@ const MeterDetail = ({
       const day = startOfDay(new Date(r.timestamp)).getTime();
       map.set(day, (map.get(day) ?? 0) + r.kwh);
     });
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([ts, val]) => ({ date: new Date(ts), value: parseFloat(val.toFixed(2)) }));
+    const rows: { date: Date; value: number }[] = [];
+    for (
+      let cursor = startOfDay(customPeriod.start);
+      cursor.getTime() <= startOfDay(customPeriod.end).getTime();
+      cursor = addDays(cursor, 1)
+    ) {
+      const key = cursor.getTime();
+      const val = map.get(key) ?? 0;
+      rows.push({ date: new Date(key), value: parseFloat(val.toFixed(2)) });
+    }
+    return rows;
   }, [customPeriod, meter.readings]);
 
   const chartOptions: ChartOptions<'bar' | 'line'> = {
@@ -180,26 +188,38 @@ const MeterDetail = ({
   const handleExportPdf = useCallback(async (mode: 'download' | 'preview' = 'download') => {
     if (!receiptRef.current) return;
     if (mode === 'preview') {
+      if (!customPeriod) return;
       const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
-      const margin = 28;
+      const margin = 32;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const tableWidth = pageWidth - margin * 2;
       let y = margin;
+
       pdf.setFontSize(14);
       pdf.text(`${plant.name} - ${meter.name}`, margin, y);
-      y += 18;
+      y += 16;
       pdf.setFontSize(12);
-      pdf.text('สรุปการใช้ไฟรายวัน', margin, y);
+      pdf.text(`สรุปการใช้ไฟรายวัน (${format(customPeriod.start, 'd MMM yyyy')} - ${format(customPeriod.end, 'd MMM yyyy')})`, margin, y);
       y += 12;
+
       pdf.setFontSize(10);
-      dailyRows.forEach(({ date, value }, idx) => {
+      pdf.text('วันที่', margin, y);
+      pdf.text('พลังงาน (kWh)', margin + tableWidth / 2, y);
+      y += 10;
+      pdf.setLineWidth(0.4);
+      pdf.line(margin, y, margin + tableWidth, y);
+      y += 10;
+
+      dailyRows.forEach(({ date, value }) => {
         if (y > pdf.internal.pageSize.getHeight() - margin) {
           pdf.addPage();
-          y = margin;
+          y = margin + 10;
         }
-        const label = format(date, 'd MMM yyyy');
-        pdf.text(`${idx + 1}. ${label}`, margin, y);
-        pdf.text(`${value.toFixed(2)} kWh`, margin + 220, y);
-        y += 14;
+        pdf.text(format(date, 'd MMM yyyy'), margin, y);
+        pdf.text(value.toFixed(2), margin + tableWidth / 2, y);
+        y += 12;
       });
+
       const url = pdf.output('bloburl');
       window.open(url, '_blank');
       return;
