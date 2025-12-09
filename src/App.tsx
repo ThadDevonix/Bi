@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   addDays,
   addMonths,
@@ -343,261 +343,272 @@ const handleSelectMeter = (meterId: string) => {
 
     const isChartView = detailTab === 'chart';
     const isBillingView = detailTab === 'billing';
+    const isSettingsView = detailTab === 'settings';
     const tabClass = (tab: 'chart' | 'billing' | 'settings') => (detailTab === tab ? 'active' : '');
+    const hiddenPanelStyle: CSSProperties = { position: 'absolute', left: '-99999px', top: 0, width: '100%', pointerEvents: 'none' };
 
     return (
       <>
-        {isChartView ? (
-          <section className="panel">
-            <div className="panel-head">
-              <div className="step-chip">3</div>
-              <div>
-                <p className="eyebrow">Usage</p>
-                <h3>กราฟการใช้ไฟ / มิเตอร์</h3>
-              </div>
-              <div className="panel-head-actions">
-                <div className="inline-tabs">
-                  <button
-                    type="button"
-                    className={tabClass('chart')}
-                    onClick={() => setDetailTab('chart')}
-                  >
-                    กราฟ
-                  </button>
-                  <button
-                    type="button"
-                    className={tabClass('billing')}
-                    onClick={() => setDetailTab('billing')}
-                  >
-                    ออกบิล
-                  </button>
-                  <button
-                    type="button"
-                    className={tabClass('settings')}
-                    onClick={() => setDetailTab('settings')}
-                  >
-                    ตั้งค่าบิล
-                  </button>
-                </div>
-              </div>
+        <section
+          className="panel"
+          style={isChartView ? undefined : hiddenPanelStyle}
+          aria-hidden={!isChartView}
+        >
+          <div className="panel-head">
+            <div className="step-chip">3</div>
+            <div>
+              <p className="eyebrow">Usage</p>
+              <h3>กราฟการใช้ไฟ / มิเตอร์</h3>
             </div>
-            <MeterDetail
-              plant={selectedPlant}
-              meter={selectedMeter}
-              period={period}
-              onPeriodChange={setPeriod}
-              summaryLabel={periodLabel}
-              summaryUsage={periodUsage}
-              summaryCost={periodCost}
-              dailyDate={dailyDate}
-              dailyMaxDate={todayInputValue}
-              onDailyDateChange={setDailyDate}
-              onDailyDateShift={handleDailyShift}
-              monthlyMonth={monthlyMonth}
-              monthlyMaxMonth={currentMonthInputValue}
-              onMonthlyChange={handleMonthlyChange}
-              onMonthlyShift={handleMonthlyShift}
-              yearlyYear={yearlyYear}
-              yearlyMaxYear={currentYearInputValue}
-              yearlyMinYear={String(YEAR_MIN)}
-              onYearlyChange={handleYearlyChange}
-              onYearlyShift={handleYearlyShift}
-              customPeriod={customPeriod}
-              customRateOn={customRateOn}
-              customRateOff={customRateOff}
-              chartPoints={chartPoints}
-              theme={theme}
-              onRegisterExport={(fn) => {
-                exportHandlerRef.current = fn;
-                setExportReady(Boolean(fn));
-              }}
-            />
-          </section>
-        ) : isBillingView ? (
-          <section className="panel">
-            <div className="panel-head">
-              <div className="step-chip">3</div>
-              <div>
-                <p className="eyebrow">Billing</p>
-                <h3>ออกบิล / ตั้งค่ารอบบิล</h3>
-              </div>
-              <div className="panel-head-actions">
-                <div className="inline-tabs">
-                  <button
-                    type="button"
-                    className={tabClass('chart')}
-                    onClick={() => setDetailTab('chart')}
-                  >
-                    กราฟ
-                  </button>
-                  <button
-                    type="button"
-                    className={tabClass('billing')}
-                    onClick={() => setDetailTab('billing')}
-                  >
-                    ออกบิล
-                  </button>
-                  <button
-                    type="button"
-                    className={tabClass('settings')}
-                    onClick={() => setDetailTab('settings')}
-                  >
-                    ตั้งค่าบิล
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="billing-custom" id="custom-billing">
-              <div className="billing-column">
-                <div className="billing-card">
-                  <div className="date-grid">
-                    <div>
-                      <label>วันที่เริ่ม</label>
-                      <input
-                        type="date"
-                        className="date-input"
-                        value={customStart}
-                        onChange={(e) => setCustomStart(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label>วันที่สิ้นสุด</label>
-                      <input
-                        type="date"
-                        className="date-input"
-                        value={customEnd}
-                        onChange={(e) => setCustomEnd(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="billing-card">
-                  <p className="eyebrow">ตั้งค่าอัตรา</p>
-                  <div className="form-grid">
-                    <div>
-                      <label>อัตราค่าไฟ (09:00 - 22:00)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={customRateOn}
-                        onChange={(e) => setCustomRateOn(e.target.value === '' ? '' : Number(e.target.value))}
-                      />
-                      <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
-                    </div>
-                    <div>
-                      <label>อัตราค่าไฟ (22:00 - 09:00)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={customRateOff}
-                        onChange={(e) => setCustomRateOff(e.target.value === '' ? '' : Number(e.target.value))}
-                      />
-                      <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="billing-card inline-select-row">
-                  <label>หน่วยเงิน (Currency)</label>
-                  <select
-                    className="inline-select"
-                    value={selectedPlant.currency}
-                    onChange={(e) => handleUpdatePlant({ currency: e.target.value as Plant['currency'] })}
-                  >
-                    {currencyOptions.map((code) => (
-                      <option key={code} value={code}>
-                        {code}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="panel-foot">
-              <div className="muted">ต้องการออกใบเสร็จ PDF</div>
-              <div className="panel-head-actions">
+            <div className="panel-head-actions">
+              <div className="inline-tabs">
                 <button
                   type="button"
-                  className="ghost"
-                  onClick={() => exportHandlerRef.current?.('preview')}
-                  disabled={!exportReady}
+                  className={tabClass('chart')}
+                  onClick={() => setDetailTab('chart')}
                 >
-                  Preview
+                  กราฟ
                 </button>
+                <button
+                  type="button"
+                  className={tabClass('billing')}
+                  onClick={() => setDetailTab('billing')}
+                >
+                  ออกบิล
+                </button>
+                <button
+                  type="button"
+                  className={tabClass('settings')}
+                  onClick={() => setDetailTab('settings')}
+                >
+                  ตั้งค่าบิล
+                </button>
+              </div>
+            </div>
+          </div>
+          <MeterDetail
+            plant={selectedPlant}
+            meter={selectedMeter}
+            period={period}
+            onPeriodChange={setPeriod}
+            summaryLabel={periodLabel}
+            summaryUsage={periodUsage}
+            summaryCost={periodCost}
+            dailyDate={dailyDate}
+            dailyMaxDate={todayInputValue}
+            onDailyDateChange={setDailyDate}
+            onDailyDateShift={handleDailyShift}
+            monthlyMonth={monthlyMonth}
+            monthlyMaxMonth={currentMonthInputValue}
+            onMonthlyChange={handleMonthlyChange}
+            onMonthlyShift={handleMonthlyShift}
+            yearlyYear={yearlyYear}
+            yearlyMaxYear={currentYearInputValue}
+            yearlyMinYear={String(YEAR_MIN)}
+            onYearlyChange={handleYearlyChange}
+            onYearlyShift={handleYearlyShift}
+            customPeriod={customPeriod}
+            customRateOn={customRateOn}
+            customRateOff={customRateOff}
+            chartPoints={chartPoints}
+            theme={theme}
+            onRegisterExport={(fn) => {
+              exportHandlerRef.current = fn;
+              setExportReady(Boolean(fn));
+            }}
+          />
+        </section>
+        <section
+          className="panel"
+          style={isBillingView ? undefined : hiddenPanelStyle}
+          aria-hidden={!isBillingView}
+        >
+          <div className="panel-head">
+            <div className="step-chip">3</div>
+            <div>
+              <p className="eyebrow">Billing</p>
+              <h3>ออกบิล / ตั้งค่ารอบบิล</h3>
+            </div>
+            <div className="panel-head-actions">
+              <div className="inline-tabs">
+                <button
+                  type="button"
+                  className={tabClass('chart')}
+                  onClick={() => setDetailTab('chart')}
+                >
+                  กราฟ
+                </button>
+                <button
+                  type="button"
+                  className={tabClass('billing')}
+                  onClick={() => setDetailTab('billing')}
+                >
+                  ออกบิล
+                </button>
+                <button
+                  type="button"
+                  className={tabClass('settings')}
+                  onClick={() => setDetailTab('settings')}
+                >
+                  ตั้งค่าบิล
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="billing-custom" id="custom-billing">
+            <div className="billing-column">
+              <div className="billing-card">
+                <div className="date-grid">
+                  <div>
+                    <label>วันที่เริ่ม</label>
+                    <input
+                      type="date"
+                      className="date-input"
+                      value={customStart}
+                      onChange={(e) => setCustomStart(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label>วันที่สิ้นสุด</label>
+                    <input
+                      type="date"
+                      className="date-input"
+                      value={customEnd}
+                      onChange={(e) => setCustomEnd(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="billing-card">
+                <p className="eyebrow">ตั้งค่าอัตรา</p>
+                <div className="form-grid">
+                  <div>
+                    <label>อัตราค่าไฟ (09:00 - 22:00)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customRateOn}
+                      onChange={(e) => setCustomRateOn(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                    <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
+                  </div>
+                  <div>
+                    <label>อัตราค่าไฟ (22:00 - 09:00)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customRateOff}
+                      onChange={(e) => setCustomRateOff(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                    <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
+                  </div>
+                </div>
+              </div>
+              <div className="billing-card inline-select-row">
+                <label>หน่วยเงิน (Currency)</label>
+                <select
+                  className="inline-select"
+                  value={selectedPlant.currency}
+                  onChange={(e) => handleUpdatePlant({ currency: e.target.value as Plant['currency'] })}
+                >
+                  {currencyOptions.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div className="panel-foot">
+            <div className="muted">ต้องการออกใบเสร็จ PDF</div>
+            <div className="panel-head-actions">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => exportHandlerRef.current?.('preview')}
+                disabled={!exportReady}
+              >
+                Preview
+              </button>
               <button type="button" className="primary" onClick={() => exportHandlerRef.current?.()} disabled={!exportReady}>
                 Export PDF ใบเสร็จ
               </button>
+            </div>
+          </div>
+        </section>
+        <section
+          className="panel"
+          id="custom-billing"
+          style={isSettingsView ? undefined : hiddenPanelStyle}
+          aria-hidden={!isSettingsView}
+        >
+          <div className="panel-head">
+            <div className="step-chip">4</div>
+            <div>
+              <p className="eyebrow">ตั้งค่าบิล</p>
+              <h3>ตั้งค่าอัตราค่าไฟ</h3>
+            </div>
+            <div className="panel-head-actions">
+              <div className="inline-tabs">
+                <button
+                  type="button"
+                  className={tabClass('chart')}
+                  onClick={() => setDetailTab('chart')}
+                >
+                  กราฟ
+                </button>
+                <button
+                  type="button"
+                  className={tabClass('billing')}
+                  onClick={() => setDetailTab('billing')}
+                >
+                  ออกบิล
+                </button>
+                <button
+                  type="button"
+                  className={tabClass('settings')}
+                  onClick={() => setDetailTab('settings')}
+                >
+                  ตั้งค่าบิล
+                </button>
               </div>
             </div>
-          </section>
-        ) : (
-          <section className="panel" id="custom-billing">
-            <div className="panel-head">
-              <div className="step-chip">4</div>
-              <div>
-                <p className="eyebrow">ตั้งค่าบิล</p>
-                <h3>ตั้งค่าอัตราค่าไฟ</h3>
-              </div>
-              <div className="panel-head-actions">
-                <div className="inline-tabs">
-                  <button
-                    type="button"
-                    className={tabClass('chart')}
-                    onClick={() => setDetailTab('chart')}
-                  >
-                    กราฟ
-                  </button>
-                  <button
-                    type="button"
-                    className={tabClass('billing')}
-                    onClick={() => setDetailTab('billing')}
-                  >
-                    ออกบิล
-                  </button>
-                  <button
-                    type="button"
-                    className={tabClass('settings')}
-                    onClick={() => setDetailTab('settings')}
-                  >
-                    ตั้งค่าบิล
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="billing-custom">
-              <div className="billing-column">
-                <div className="billing-card">
-                  <p className="eyebrow">ตั้งค่าอัตรา</p>
-                  <div className="form-grid">
-                    <div>
-                      <label>อัตราค่าไฟ (09:00 - 22:00)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={customRateOn}
-                        onChange={(e) => setCustomRateOn(e.target.value === '' ? '' : Number(e.target.value))}
-                      />
-                      <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
-                    </div>
-                    <div>
-                      <label>อัตราค่าไฟ (22:00 - 09:00)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={customRateOff}
-                        onChange={(e) => setCustomRateOff(e.target.value === '' ? '' : Number(e.target.value))}
-                      />
-                      <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
-                    </div>
+          </div>
+          <div className="billing-custom">
+            <div className="billing-column">
+              <div className="billing-card">
+                <p className="eyebrow">ตั้งค่าอัตรา</p>
+                <div className="form-grid">
+                  <div>
+                    <label>อัตราค่าไฟ (09:00 - 22:00)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customRateOn}
+                      onChange={(e) => setCustomRateOn(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                    <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
+                  </div>
+                  <div>
+                    <label>อัตราค่าไฟ (22:00 - 09:00)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customRateOff}
+                      onChange={(e) => setCustomRateOff(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                    <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
                   </div>
                 </div>
               </div>
             </div>
-          </section>
-        )}
+          </div>
+        </section>
       </>
     );
   };

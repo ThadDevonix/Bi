@@ -186,45 +186,134 @@ const MeterDetail = ({
   );
 
   const handleExportPdf = useCallback(async (mode: 'download' | 'preview' = 'download') => {
-    if (!receiptRef.current) return;
     if (mode === 'preview') {
       if (!customPeriod) return;
       const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
-      const margin = 32;
+      const margin = 28;
       const pageWidth = pdf.internal.pageSize.getWidth();
       const tableWidth = pageWidth - margin * 2;
+      const pageHeight = pdf.internal.pageSize.getHeight();
       let y = margin;
 
+      const colorPrimary: [number, number, number] = [32, 70, 153];
+      const colorAccent: [number, number, number] = [92, 184, 156];
+      const colorMuted: [number, number, number] = [102, 112, 133];
+      const headerBg: [number, number, number] = [236, 240, 245];
+      const zebraBg: [number, number, number] = [247, 250, 253];
+      const textColor: [number, number, number] = [26, 32, 44];
+      const reservedTop = 72 + 60; // header + summary
+      const reservedBottom = 22; // footer bar
+      const availableForTable = pageHeight - margin - reservedBottom - (margin + reservedTop);
+      const estimatedRows = Math.max(1, dailyRows.length + 2); // header + footer
+      const rowHeight = Math.max(12, Math.min(20, availableForTable / estimatedRows));
+      const rowScale = rowHeight / 20;
+      const valueColWidth = tableWidth * 0.35;
+      const dateColWidth = tableWidth - valueColWidth;
+      const valueColX = margin + dateColWidth;
+      const totalKwh = dailyRows.reduce((sum, row) => sum + row.value, 0);
+      const dayCount = dailyRows.length || 1;
+      const avgKwh = totalKwh / dayCount;
+      const peak = dailyRows.reduce<{ date: Date | null; value: number }>(
+        (acc, row) => (row.value > acc.value ? { date: row.date, value: row.value } : acc),
+        { date: null, value: 0 },
+      );
+      const drawCard = (label: string, value: string, x: number, width: number) => {
+        const cardHeight = 46;
+        pdf.setFillColor(247, 250, 253);
+        pdf.rect(x, y, width, cardHeight, 'F');
+        pdf.setDrawColor(226, 232, 240);
+        pdf.rect(x, y, width, cardHeight);
+        pdf.setTextColor(...colorMuted);
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(label, x + 10, y + 16);
+        pdf.setTextColor(...textColor);
+        pdf.setFontSize(13);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(value, x + 10, y + 32);
+      };
+
+      // Header ribbon
+      pdf.setFillColor(...colorPrimary);
+      pdf.rect(margin, y, tableWidth, 56, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(14);
-      pdf.text(`${plant.name} - ${meter.name}`, margin, y);
-      y += 16;
+      pdf.text('PPA Daily Summary', margin + 12, y + 22);
       pdf.setFontSize(12);
-      pdf.text(`สรุปการใช้ไฟรายวัน (${format(customPeriod.start, 'd MMM yyyy')} - ${format(customPeriod.end, 'd MMM yyyy')})`, margin, y);
-      y += 12;
-
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`${plant.name} • ${meter.name}`, margin + 12, y + 38);
       pdf.setFontSize(10);
-      pdf.text('วันที่', margin, y);
-      pdf.text('พลังงาน (kWh)', margin + tableWidth / 2, y);
-      y += 10;
-      pdf.setLineWidth(0.4);
-      pdf.line(margin, y, margin + tableWidth, y);
-      y += 10;
-
-      dailyRows.forEach(({ date, value }) => {
-        if (y > pdf.internal.pageSize.getHeight() - margin) {
-          pdf.addPage();
-          y = margin + 10;
-        }
-        pdf.text(format(date, 'd MMM yyyy'), margin, y);
-        pdf.text(value.toFixed(2), margin + tableWidth / 2, y);
-        y += 12;
+      pdf.text(
+        `${format(customPeriod.start, 'd MMM yyyy')} - ${format(customPeriod.end, 'd MMM yyyy')}`,
+        margin + tableWidth - 12,
+        y + 24,
+        { align: 'right' },
+      );
+      pdf.text(`ช่วงบิล: ${customRateOn === '' && customRateOff === '' ? 'default' : 'custom'}`, margin + tableWidth - 12, y + 38, {
+        align: 'right',
       });
+
+      y += 72;
+
+      // Summary cards
+      const cardWidth = (tableWidth - 16) / 3;
+      drawCard('พลังงานรวม (kWh)', totalKwh.toFixed(2), margin, cardWidth);
+      drawCard('ค่าเฉลี่ยต่อวัน (kWh)', avgKwh.toFixed(2), margin + cardWidth + 8, cardWidth);
+      drawCard(
+        'วันที่ใช้สูงสุด',
+        peak.date ? `${format(peak.date, 'd MMM')} • ${peak.value.toFixed(2)} kWh` : '-',
+        margin + (cardWidth + 8) * 2,
+        cardWidth,
+      );
+      y += 60;
+
+      // Table
+      pdf.setTextColor(...textColor);
+      pdf.setFont('helvetica', 'bold');
+      const renderTableHeader = () => {
+        pdf.setFillColor(...headerBg);
+        pdf.rect(margin, y, tableWidth, rowHeight, 'F');
+        pdf.setTextColor(45, 55, 72);
+        pdf.setFontSize(10 * rowScale);
+        const textY = y + rowHeight / 2 + 3 * rowScale;
+        pdf.text('วันที่', margin + 6, textY);
+        pdf.text('พลังงาน (kWh)', valueColX + valueColWidth - 6, textY, { align: 'right' });
+        pdf.setTextColor(...textColor);
+        y += rowHeight;
+      };
+
+      renderTableHeader();
+
+      dailyRows.forEach(({ date, value }, index) => {
+        const isZebra = index % 2 === 0;
+        if (isZebra) {
+          pdf.setFillColor(...zebraBg);
+          pdf.rect(margin, y, tableWidth, rowHeight, 'F');
+        }
+        const textY = y + rowHeight / 2 + 3 * rowScale;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(10 * rowScale);
+        pdf.text(format(date, 'd MMM yyyy'), margin + 6, textY);
+        pdf.text(value.toFixed(2), valueColX + valueColWidth - 6, textY, { align: 'right' });
+        y += rowHeight;
+      });
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(10 * rowScale);
+      pdf.setFillColor(...colorAccent);
+      pdf.rect(margin, y, tableWidth, rowHeight, 'F');
+      pdf.setTextColor(255, 255, 255);
+      const footerY = y + rowHeight / 2 + 3;
+      pdf.text('รวมทั้งช่วง', margin + 6, footerY);
+      pdf.text(totalKwh.toFixed(2), valueColX + valueColWidth - 6, footerY, { align: 'right' });
 
       const url = pdf.output('bloburl');
       window.open(url, '_blank');
       return;
     }
 
+    if (!receiptRef.current) return;
     const canvas = await html2canvas(receiptRef.current, { scale: 2, backgroundColor: chartBackground });
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
@@ -236,7 +325,7 @@ const MeterDetail = ({
 
     pdf.addImage(imgData, 'PNG', margin, margin, usableWidth, imgHeight);
     pdf.save(`${plant.name}-${meter.name}-invoice.pdf`);
-  }, [chartBackground, dailyRows, meter.name, plant.name]);
+  }, [chartBackground, customPeriod, dailyRows, meter.name, plant.name]);
 
   useEffect(() => {
     if (onRegisterExport) {
