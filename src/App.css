@@ -413,15 +413,40 @@ body.dark-mode .theme-switch .label-right {
 .date-shift-controls {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-left: auto;
 }
 
 .shift-btn {
   padding: 8px 12px;
-  border-radius: 10px;
-  min-width: 42px;
+  border-radius: 12px;
+  min-width: 44px;
   font-weight: 800;
+  background: linear-gradient(135deg, var(--surface-bg), var(--card-strong-bg));
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  box-shadow: 0 6px 14px rgba(47, 125, 233, 0.12);
+  transition: all 140ms ease;
+}
+
+.shift-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: 0 8px 18px rgba(47, 125, 233, 0.2);
+  transform: translateY(-1px);
+}
+
+.shift-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.shift-btn__icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  display: inline-block;
 }
 
 .pill {
@@ -468,14 +493,20 @@ body.dark-mode .theme-switch .label-right {
 
 .date-input {
   position: relative;
-  padding-right: 42px;
-  height: 46px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  background: linear-gradient(145deg, var(--surface-bg), var(--input-bg));
+  padding: 8px 14px 8px 12px;
+  padding-right: 40px;
+  height: 44px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  background: radial-gradient(circle at 15% 20%, rgba(79, 143, 247, 0.08), transparent 38%),
+    linear-gradient(145deg, var(--surface-bg), var(--input-bg));
   border: 1px solid var(--border-color);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 20px rgba(47, 125, 233, 0.08);
   cursor: pointer;
+  transition: all 160ms ease;
 }
 
 .date-input::-webkit-calendar-picker-indicator {
@@ -488,6 +519,12 @@ body.dark-mode .theme-switch .label-right {
   background: none;
   opacity: 0;
   cursor: pointer;
+}
+
+.date-input--year::-webkit-inner-spin-button,
+.date-input--year::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .date-input::after {
@@ -506,12 +543,37 @@ body.dark-mode .theme-switch .label-right {
 
 .date-input--compact {
   max-width: 190px;
+  text-align: center;
+}
+
+.billing-card .date-input {
+  max-width: 160px;
+  width: 100%;
+}
+
+.date-grid label {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 body.dark-mode .date-input {
-  background: linear-gradient(145deg, #16233a, #121c32);
+  background: radial-gradient(circle at 18% 22%, rgba(111, 181, 255, 0.08), transparent 36%),
+    linear-gradient(145deg, #16233a, #121c32);
   border-color: #223455;
   color: #e6efff;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12), 0 8px 20px rgba(111, 181, 255, 0.12);
 }
 
 body.dark-mode .date-input::after {
@@ -540,6 +602,51 @@ body.dark-mode .date-input::after {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(47, 125, 233, 0.18);
+}
+
+.date-shift-row {
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--surface-bg), var(--card-bg));
+  box-shadow: 0 6px 16px rgba(47, 125, 233, 0.08);
+}
+
+.date-shift-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-strong-bg);
+}
+
+.shift-btn {
+  padding: 8px 12px;
+  border-radius: 12px;
+  min-width: 44px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--surface-bg), var(--card-strong-bg));
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  box-shadow: 0 6px 14px rgba(47, 125, 233, 0.12);
+  transition: all 140ms ease;
+}
+
+.shift-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: 0 8px 18px rgba(47, 125, 233, 0.2);
+  transform: translateY(-1px);
+}
+
+.shift-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .billing-custom {
@@ -717,7 +824,6 @@ body.dark-mode .date-input::after {
   border-radius: 12px;
   padding: 10px;
 }
-
 @media (max-width: 720px) {
   #root {
     padding: 20px 14px 32px;

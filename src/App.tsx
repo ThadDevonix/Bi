@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { addDays, addMonths, format as formatDate, isValid, parseISO, startOfDay, startOfMonth } from 'date-fns';
+import {
+  addDays,
+  addMonths,
+  endOfMonth,
+  endOfYear,
+  format as formatDate,
+  isValid,
+  parseISO,
+  startOfDay,
+  startOfMonth,
+  startOfYear,
+} from 'date-fns';
 import { BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js';
 import './App.css';
 import PlantSelector from './components/PlantSelector';
@@ -9,12 +20,12 @@ import type { Plant, UsagePeriod } from './types';
 import { plants as seedPlants } from './data/plants';
 import { aggregateUsage } from './utils/aggregation';
 import { calculateCost, calculateTotalUsage, filterReadingsByPeriod, getBillingPeriod } from './utils/billing';
-import { formatCurrency, formatNumber, formatPeriod } from './utils/format';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend);
 
 type View = 'plant' | 'meterList' | 'meterDetail';
 type Theme = 'light' | 'dark';
+const YEAR_MIN = 2020;
 
 function App() {
   const currencyOptions: Plant['currency'][] = ['THB', 'USD', 'EUR', 'JPY', 'AUD'];
@@ -26,9 +37,9 @@ function App() {
   const [monthlyMonth, setMonthlyMonth] = useState<string>(() => formatDate(new Date(), 'yyyy-MM'));
   const [yearlyYear, setYearlyYear] = useState<string>(() => formatDate(new Date(), 'yyyy'));
   const [view, setView] = useState<View>('plant');
-  const [detailTab, setDetailTab] = useState<'chart' | 'billing'>('chart');
+  const [detailTab, setDetailTab] = useState<'chart' | 'billing' | 'settings'>('chart');
   const [theme, setTheme] = useState<Theme>('light');
-  const exportHandlerRef = useRef<(() => void) | null>(null);
+  const exportHandlerRef = useRef<((mode?: 'download' | 'preview') => void) | null>(null);
   const [exportReady, setExportReady] = useState(false);
   const [customRateOn, setCustomRateOn] = useState<number | ''>(''); // 09:00-22:00
   const [customRateOff, setCustomRateOff] = useState<number | ''>(''); // 22:00-09:00
@@ -58,20 +69,16 @@ function App() {
     }, {});
   }, [billingPeriod, selectedPlant]);
 
-  const readingsThisPeriod =
-    billingPeriod && selectedMeter ? filterReadingsByPeriod(selectedMeter.readings, billingPeriod) : [];
-  const usageThisPeriod = selectedMeter && billingPeriod ? calculateTotalUsage(readingsThisPeriod) : 0;
-  const costThisPeriod = selectedMeter && billingPeriod ? calculateCost(usageThisPeriod, selectedMeter.ratePerKwh) : 0;
 
 const selectedDailyDate = useMemo(() => {
   const parsed = parseISO(dailyDate);
   return isValid(parsed) ? parsed : new Date();
 }, [dailyDate]);
 
-const selectedMonthlyDate = useMemo(() => {
-  const parsed = parseISO(`${monthlyMonth}-01`);
-  return isValid(parsed) ? startOfMonth(parsed) : startOfMonth(new Date());
-}, [monthlyMonth]);
+  const selectedMonthlyDate = useMemo(() => {
+    const parsed = parseISO(`${monthlyMonth}-01`);
+    return isValid(parsed) ? startOfMonth(parsed) : startOfMonth(new Date());
+  }, [monthlyMonth]);
 
 const selectedYear = useMemo(() => {
   const yearNum = Number(yearlyYear);
@@ -79,6 +86,44 @@ const selectedYear = useMemo(() => {
   if (!Number.isFinite(yearNum)) return thisYear;
   return Math.min(Math.max(yearNum, YEAR_MIN), thisYear);
 }, [yearlyYear]);
+
+  const selectedRange = useMemo(() => {
+    if (period === 'daily') {
+      const start = startOfDay(selectedDailyDate);
+      return { start, end: addDays(start, 1) };
+    }
+    if (period === 'monthly') {
+      const start = startOfMonth(selectedMonthlyDate);
+      return { start, end: addDays(endOfMonth(start), 1) };
+    }
+    const start = startOfYear(new Date(selectedYear, 0, 1));
+    return { start, end: addDays(endOfYear(start), 1) };
+  }, [period, selectedDailyDate, selectedMonthlyDate, selectedYear]);
+
+  const periodLabel = useMemo(() => {
+    if (period === 'daily') {
+      return formatDate(selectedDailyDate, 'd MMM yyyy');
+    }
+    if (period === 'monthly') {
+      return formatDate(selectedMonthlyDate, 'MMM yyyy');
+    }
+    return `${selectedYear}`;
+  }, [period, selectedDailyDate, selectedMonthlyDate, selectedYear]);
+
+  const periodUsage = useMemo(() => {
+    if (!selectedMeter || !selectedRange) return 0;
+    const { start, end } = selectedRange;
+    const filtered = selectedMeter.readings.filter(({ timestamp }) => {
+      const date = new Date(timestamp);
+      return (date.getTime() >= start.getTime()) && date.getTime() < end.getTime();
+    });
+    return calculateTotalUsage(filtered);
+  }, [selectedMeter, selectedRange]);
+
+  const periodCost = useMemo(
+    () => (selectedMeter ? calculateCost(periodUsage, selectedMeter.ratePerKwh) : 0),
+    [periodUsage, selectedMeter],
+  );
 
   const chartPoints = useMemo(
     () => (selectedMeter
@@ -103,7 +148,6 @@ const toYearInputValue = (date: Date) => formatDate(date, 'yyyy');
 const todayInputValue = toDateInputValue(new Date());
 const currentMonthInputValue = toMonthInputValue(new Date());
 const currentYearInputValue = toYearInputValue(new Date());
-const YEAR_MIN = 2020;
 
 const handleDailyShift = (delta: number) => {
   setDailyDate((prev) => {
@@ -178,25 +222,6 @@ const handleYearlyChange = (value: string) => {
     return { start: startDate, end: endDate };
   }, [billingPeriod, customEnd, customStart]);
 
-  const { offUsage, onUsage } = useMemo(() => {
-    if (!customPeriod || !selectedMeter) return { offUsage: 0, onUsage: 0 };
-    const readings = filterReadingsByPeriod(selectedMeter.readings, customPeriod);
-    return readings.reduce(
-      (acc, reading) => {
-        const hour = new Date(reading.timestamp).getHours();
-        if (hour >= 22 || hour < 9) {
-          acc.offUsage += reading.kwh;
-        } else {
-          acc.onUsage += reading.kwh;
-        }
-        return acc;
-      },
-      { offUsage: 0, onUsage: 0 },
-    );
-  }, [customPeriod, selectedMeter]);
-  const customCost =
-    offUsage * (Number(customRateOff) || 0) +
-    onUsage * (Number(customRateOn) || 0);
 
   const handleSelectPlant = (plantId: string) => {
     setSelectedPlantId(plantId);
@@ -231,15 +256,15 @@ const handleYearlyChange = (value: string) => {
     );
   };
 
-  const handleSelectMeter = (meterId: string) => {
-    setSelectedMeterId(meterId);
-    setView('meterDetail');
-    setDetailTab('chart');
-    setDailyDate(formatDate(new Date(), 'yyyy-MM-dd'));
-    setMonthlyMonth(currentMonthInputValue);
-    setYearlyYear(currentYearInputValue);
-    exportHandlerRef.current = null;
-    setExportReady(false);
+const handleSelectMeter = (meterId: string) => {
+  setSelectedMeterId(meterId);
+  setView('meterDetail');
+  setDetailTab('chart');
+  setDailyDate(formatDate(new Date(), 'yyyy-MM-dd'));
+  setMonthlyMonth(currentMonthInputValue);
+  setYearlyYear(currentYearInputValue);
+  exportHandlerRef.current = null;
+  setExportReady(false);
     const meter = selectedPlant?.meters.find((m) => m.id === meterId);
     const nextBillingPeriod = selectedPlant ? getBillingPeriod(selectedPlant.billingStartDay) : null;
     const baseRate = meter ? meter.ratePerKwh : 0;
@@ -317,6 +342,8 @@ const handleYearlyChange = (value: string) => {
     }
 
     const isChartView = detailTab === 'chart';
+    const isBillingView = detailTab === 'billing';
+    const tabClass = (tab: 'chart' | 'billing' | 'settings') => (detailTab === tab ? 'active' : '');
 
     return (
       <>
@@ -332,17 +359,24 @@ const handleYearlyChange = (value: string) => {
                 <div className="inline-tabs">
                   <button
                     type="button"
-                    className={isChartView ? 'active' : ''}
+                    className={tabClass('chart')}
                     onClick={() => setDetailTab('chart')}
                   >
                     กราฟ
                   </button>
                   <button
                     type="button"
-                    className={!isChartView ? 'active' : ''}
+                    className={tabClass('billing')}
                     onClick={() => setDetailTab('billing')}
                   >
                     ออกบิล
+                  </button>
+                  <button
+                    type="button"
+                    className={tabClass('settings')}
+                    onClick={() => setDetailTab('settings')}
+                  >
+                    ตั้งค่าบิล
                   </button>
                 </div>
               </div>
@@ -352,6 +386,9 @@ const handleYearlyChange = (value: string) => {
               meter={selectedMeter}
               period={period}
               onPeriodChange={setPeriod}
+              summaryLabel={periodLabel}
+              summaryUsage={periodUsage}
+              summaryCost={periodCost}
               dailyDate={dailyDate}
               dailyMaxDate={todayInputValue}
               onDailyDateChange={setDailyDate}
@@ -365,9 +402,9 @@ const handleYearlyChange = (value: string) => {
               yearlyMinYear={String(YEAR_MIN)}
               onYearlyChange={handleYearlyChange}
               onYearlyShift={handleYearlyShift}
-              billingPeriod={billingPeriod}
-              billingUsage={usageThisPeriod}
-              billingCost={costThisPeriod}
+              customPeriod={customPeriod}
+              customRateOn={customRateOn}
+              customRateOff={customRateOff}
               chartPoints={chartPoints}
               theme={theme}
               onRegisterExport={(fn) => {
@@ -376,7 +413,7 @@ const handleYearlyChange = (value: string) => {
               }}
             />
           </section>
-        ) : (
+        ) : isBillingView ? (
           <section className="panel">
             <div className="panel-head">
               <div className="step-chip">3</div>
@@ -388,144 +425,176 @@ const handleYearlyChange = (value: string) => {
                 <div className="inline-tabs">
                   <button
                     type="button"
-                    className={isChartView ? 'active' : ''}
+                    className={tabClass('chart')}
                     onClick={() => setDetailTab('chart')}
                   >
                     กราฟ
                   </button>
                   <button
                     type="button"
-                    className={!isChartView ? 'active' : ''}
+                    className={tabClass('billing')}
                     onClick={() => setDetailTab('billing')}
                   >
                     ออกบิล
                   </button>
+                  <button
+                    type="button"
+                    className={tabClass('settings')}
+                    onClick={() => setDetailTab('settings')}
+                  >
+                    ตั้งค่าบิล
+                  </button>
                 </div>
               </div>
             </div>
-            <div className="stats">
-              <div className="stat-card">
-                <p className="muted">รอบบิลปัจจุบัน</p>
-                <strong>{formatPeriod(billingPeriod)}</strong>
-              </div>
-              <div className="stat-card">
-                <p className="muted">การใช้ไฟรอบบิลนี้</p>
-                <strong>{formatNumber(usageThisPeriod)} kWh</strong>
-              </div>
-              <div className="stat-card">
-                <p className="muted">ประมาณการค่าไฟ</p>
-                <strong>{formatCurrency(costThisPeriod, selectedPlant.currency)}</strong>
-              </div>
-            </div>
-            <div className="billing-card inline-select-row">
-              <label>หน่วยเงิน (Currency)</label>
-              <select
-                className="inline-select"
-                value={selectedPlant.currency}
-                onChange={(e) => handleUpdatePlant({ currency: e.target.value as Plant['currency'] })}
-              >
-                {currencyOptions.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
-                  </option>
-                ))}
-              </select>
-            </div>
-              <div className="panel-sub">
-                <div className="panel-head">
-                  <div className="step-chip">4</div>
-                  <div>
-                    <p className="eyebrow">Custom invoice</p>
-                    <h3>ตั้งค่าอัตรา & ช่วงวันที่ออกบิลเอง</h3>
-                  </div>
-                </div>
-              <div className="billing-custom">
-                <div className="billing-column">
-                  <div className="billing-card">
-                    <p className="eyebrow">ตั้งค่าอัตรา</p>
-                    <div className="form-grid">
-                      <div>
-                        <label>อัตราค่าไฟ (09:00 - 22:00)</label>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={customRateOn}
-                          onChange={(e) => setCustomRateOn(e.target.value === '' ? '' : Number(e.target.value))}
-                        />
-                        <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
-                      </div>
-                      <div>
-                        <label>อัตราค่าไฟ (22:00 - 09:00)</label>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={customRateOff}
-                          onChange={(e) => setCustomRateOff(e.target.value === '' ? '' : Number(e.target.value))}
-                        />
-                        <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
-                      </div>
+            <div className="billing-custom" id="custom-billing">
+              <div className="billing-column">
+                <div className="billing-card">
+                  <div className="date-grid">
+                    <div>
+                      <label>วันที่เริ่ม</label>
+                      <input
+                        type="date"
+                        className="date-input"
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                      />
                     </div>
-                  </div>
-                  <div className="billing-card">
-                    <p className="eyebrow">ช่วงออกบิล</p>
-                    <div className="date-grid">
-                      <div>
-                        <label>วันที่เริ่ม</label>
-                        <input
-                          type="date"
-                          className="date-input"
-                          value={customStart}
-                          onChange={(e) => setCustomStart(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label>วันที่สิ้นสุด</label>
-                        <input
-                          type="date"
-                          className="date-input"
-                          value={customEnd}
-                          onChange={(e) => setCustomEnd(e.target.value)}
-                        />
-                      </div>
+                    <div>
+                      <label>วันที่สิ้นสุด</label>
+                      <input
+                        type="date"
+                        className="date-input"
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                      />
                     </div>
                   </div>
                 </div>
-                <div className="billing-column">
-                  <div className="billing-card highlight">
-                    <p className="eyebrow">สรุปบิลที่ตั้งเอง</p>
-                    {customPeriod ? (
-                      <div className="stats tight">
-                        <div className="stat-card">
-                          <p className="muted">ช่วงออกบิล</p>
-                          <strong>{formatPeriod(customPeriod)}</strong>
-                        </div>
-                        <div className="stat-card">
-                          <p className="muted">ใช้ไฟ 09:00 - 22:00</p>
-                          <strong>{formatNumber(onUsage)} kWh</strong>
-                        </div>
-                        <div className="stat-card">
-                          <p className="muted">ใช้ไฟ 22:00 - 09:00</p>
-                          <strong>{formatNumber(offUsage)} kWh</strong>
-                        </div>
-                        <div className="stat-card">
-                          <p className="muted">ยอดคำนวณ</p>
-                          <strong>{formatCurrency(customCost, selectedPlant.currency)}</strong>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="muted">โปรดกรอกวันที่เริ่มและสิ้นสุดให้ถูกต้อง</p>
-                    )}
+                <div className="billing-card">
+                  <p className="eyebrow">ตั้งค่าอัตรา</p>
+                  <div className="form-grid">
+                    <div>
+                      <label>อัตราค่าไฟ (09:00 - 22:00)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={customRateOn}
+                        onChange={(e) => setCustomRateOn(e.target.value === '' ? '' : Number(e.target.value))}
+                      />
+                      <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
+                    </div>
+                    <div>
+                      <label>อัตราค่าไฟ (22:00 - 09:00)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={customRateOff}
+                        onChange={(e) => setCustomRateOff(e.target.value === '' ? '' : Number(e.target.value))}
+                      />
+                      <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
+                    </div>
                   </div>
+                </div>
+                <div className="billing-card inline-select-row">
+                  <label>หน่วยเงิน (Currency)</label>
+                  <select
+                    className="inline-select"
+                    value={selectedPlant.currency}
+                    onChange={(e) => handleUpdatePlant({ currency: e.target.value as Plant['currency'] })}
+                  >
+                    {currencyOptions.map((code) => (
+                      <option key={code} value={code}>
+                        {code}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
             <div className="panel-foot">
               <div className="muted">ต้องการออกใบเสร็จ PDF</div>
+              <div className="panel-head-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => exportHandlerRef.current?.('preview')}
+                  disabled={!exportReady}
+                >
+                  Preview
+                </button>
               <button type="button" className="primary" onClick={() => exportHandlerRef.current?.()} disabled={!exportReady}>
                 Export PDF ใบเสร็จ
               </button>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="panel" id="custom-billing">
+            <div className="panel-head">
+              <div className="step-chip">4</div>
+              <div>
+                <p className="eyebrow">ตั้งค่าบิล</p>
+                <h3>ตั้งค่าอัตราค่าไฟ</h3>
+              </div>
+              <div className="panel-head-actions">
+                <div className="inline-tabs">
+                  <button
+                    type="button"
+                    className={tabClass('chart')}
+                    onClick={() => setDetailTab('chart')}
+                  >
+                    กราฟ
+                  </button>
+                  <button
+                    type="button"
+                    className={tabClass('billing')}
+                    onClick={() => setDetailTab('billing')}
+                  >
+                    ออกบิล
+                  </button>
+                  <button
+                    type="button"
+                    className={tabClass('settings')}
+                    onClick={() => setDetailTab('settings')}
+                  >
+                    ตั้งค่าบิล
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="billing-custom">
+              <div className="billing-column">
+                <div className="billing-card">
+                  <p className="eyebrow">ตั้งค่าอัตรา</p>
+                  <div className="form-grid">
+                    <div>
+                      <label>อัตราค่าไฟ (09:00 - 22:00)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={customRateOn}
+                        onChange={(e) => setCustomRateOn(e.target.value === '' ? '' : Number(e.target.value))}
+                      />
+                      <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
+                    </div>
+                    <div>
+                      <label>อัตราค่าไฟ (22:00 - 09:00)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={customRateOff}
+                        onChange={(e) => setCustomRateOff(e.target.value === '' ? '' : Number(e.target.value))}
+                      />
+                      <p className="muted">หน่วย {selectedPlant.currency} ต่อ kWh</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
         )}

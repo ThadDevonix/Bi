@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { format, startOfDay } from 'date-fns';
 import { Bar, Line } from 'react-chartjs-2';
 import type { ChartOptions } from 'chart.js';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import type { AggregatedPoint } from '../utils/aggregation';
 import type { BillingPeriod, Meter, Plant, UsagePeriod } from '../types';
-import { formatCurrency, formatNumber, formatPeriod } from '../utils/format';
+import { filterReadingsByPeriod } from '../utils/billing';
+import { formatCurrency, formatNumber } from '../utils/format';
 import PeriodTabs from './PeriodTabs';
 
 interface MeterDetailProps {
@@ -13,9 +15,9 @@ interface MeterDetailProps {
   meter: Meter;
   period: UsagePeriod;
   onPeriodChange: (period: UsagePeriod) => void;
-  billingPeriod: BillingPeriod;
-  billingUsage: number;
-  billingCost: number;
+  summaryLabel: string;
+  summaryUsage: number;
+  summaryCost: number;
   chartPoints: AggregatedPoint[];
   dailyDate: string;
   dailyMaxDate: string;
@@ -30,7 +32,10 @@ interface MeterDetailProps {
   yearlyMinYear: string;
   onYearlyChange: (value: string) => void;
   onYearlyShift: (delta: number) => void;
-  onRegisterExport?: (exporter: () => void) => void;
+  customPeriod: BillingPeriod | null;
+  customRateOn: number | '';
+  customRateOff: number | '';
+  onRegisterExport?: (exporter: (mode?: 'download' | 'preview') => void) => void;
   theme: 'light' | 'dark';
 }
 
@@ -39,9 +44,9 @@ const MeterDetail = ({
   meter,
   period,
   onPeriodChange,
-  billingPeriod,
-  billingUsage,
-  billingCost,
+  summaryLabel,
+  summaryUsage,
+  summaryCost,
   chartPoints,
   dailyDate,
   dailyMaxDate,
@@ -56,12 +61,14 @@ const MeterDetail = ({
   yearlyMinYear,
   onYearlyChange,
   onYearlyShift,
+  customPeriod,
+  customRateOn,
+  customRateOff,
   onRegisterExport,
   theme,
 }: MeterDetailProps) => {
   const chartType = period === 'daily' ? 'line' : 'bar';
   const receiptRef = useRef<HTMLDivElement>(null);
-
   const isDark = theme === 'dark';
   // Use explicit palette to avoid stale CSS variable reads when toggling theme
   const chartBackground = isDark ? '#121c32' : '#f3f6fb';
@@ -73,6 +80,20 @@ const MeterDetail = ({
     () => (period === 'yearly' ? chartPoints.reduce((sum, p) => sum + p.value, 0) : 0),
     [chartPoints, period],
   );
+  const displayRate = (value: number | '') => (value === '' ? '—' : formatCurrency(value, plant.currency));
+
+  const dailyRows = useMemo(() => {
+    if (!customPeriod) return [];
+    const readings = filterReadingsByPeriod(meter.readings, customPeriod);
+    const map = new Map<number, number>();
+    readings.forEach((r) => {
+      const day = startOfDay(new Date(r.timestamp)).getTime();
+      map.set(day, (map.get(day) ?? 0) + r.kwh);
+    });
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([ts, val]) => ({ date: new Date(ts), value: parseFloat(val.toFixed(2)) }));
+  }, [customPeriod, meter.readings]);
 
   const chartOptions: ChartOptions<'bar' | 'line'> = {
     responsive: true,
@@ -156,8 +177,34 @@ const MeterDetail = ({
     [chartBackground],
   );
 
-  const handleExportPdf = useCallback(async () => {
+  const handleExportPdf = useCallback(async (mode: 'download' | 'preview' = 'download') => {
     if (!receiptRef.current) return;
+    if (mode === 'preview') {
+      const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
+      const margin = 28;
+      let y = margin;
+      pdf.setFontSize(14);
+      pdf.text(`${plant.name} - ${meter.name}`, margin, y);
+      y += 18;
+      pdf.setFontSize(12);
+      pdf.text('สรุปการใช้ไฟรายวัน', margin, y);
+      y += 12;
+      pdf.setFontSize(10);
+      dailyRows.forEach(({ date, value }, idx) => {
+        if (y > pdf.internal.pageSize.getHeight() - margin) {
+          pdf.addPage();
+          y = margin;
+        }
+        const label = format(date, 'd MMM yyyy');
+        pdf.text(`${idx + 1}. ${label}`, margin, y);
+        pdf.text(`${value.toFixed(2)} kWh`, margin + 220, y);
+        y += 14;
+      });
+      const url = pdf.output('bloburl');
+      window.open(url, '_blank');
+      return;
+    }
+
     const canvas = await html2canvas(receiptRef.current, { scale: 2, backgroundColor: chartBackground });
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
@@ -169,7 +216,7 @@ const MeterDetail = ({
 
     pdf.addImage(imgData, 'PNG', margin, margin, usableWidth, imgHeight);
     pdf.save(`${plant.name}-${meter.name}-invoice.pdf`);
-  }, [chartBackground, meter.name, plant.name]);
+  }, [chartBackground, dailyRows, meter.name, plant.name]);
 
   useEffect(() => {
     if (onRegisterExport) {
@@ -197,16 +244,16 @@ const MeterDetail = ({
       <div className="detail-body" ref={receiptRef}>
         <div className="stats">
           <div className="stat-card">
-            <p className="muted">รอบบิลปัจจุบัน</p>
-            <strong>{formatPeriod(billingPeriod)}</strong>
+            <p className="muted">ช่วงที่เลือก</p>
+            <strong>{summaryLabel}</strong>
           </div>
           <div className="stat-card">
-            <p className="muted">การใช้ไฟรอบบิลนี้</p>
-            <strong>{formatNumber(billingUsage)} kWh</strong>
+            <p className="muted">การใช้ไฟ</p>
+            <strong>{formatNumber(summaryUsage)} kWh</strong>
           </div>
           <div className="stat-card">
             <p className="muted">ประมาณการค่าไฟ</p>
-            <strong>{formatCurrency(billingCost, plant.currency)}</strong>
+            <strong>{formatCurrency(summaryCost, plant.currency)}</strong>
           </div>
         </div>
 
@@ -222,7 +269,9 @@ const MeterDetail = ({
                 aria-label="วันก่อนหน้า"
                 onClick={() => onDailyDateShift(-1)}
               >
-                ‹
+                <svg className="shift-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14.7 5.3a1 1 0 0 1 0 1.4L9.4 12l5.3 5.3a1 1 0 0 1-1.4 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.4 0Z" />
+                </svg>
               </button>
               <input
                 id="daily-date"
@@ -239,7 +288,9 @@ const MeterDetail = ({
                 onClick={() => onDailyDateShift(1)}
                 disabled={dailyDate >= dailyMaxDate}
               >
-                ›
+                <svg className="shift-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9.3 18.7a1 1 0 0 1 0-1.4L14.6 12 9.3 6.7A1 1 0 0 1 10.7 5.3l6 6a1 1 0 0 1 0 1.4l-6 6a1 1 0 0 1-1.4 0Z" />
+                </svg>
               </button>
             </div>
           </div>
@@ -255,7 +306,9 @@ const MeterDetail = ({
                 aria-label="เดือนก่อนหน้า"
                 onClick={() => onMonthlyShift(-1)}
               >
-                ‹
+                <svg className="shift-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14.7 5.3a1 1 0 0 1 0 1.4L9.4 12l5.3 5.3a1 1 0 0 1-1.4 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.4 0Z" />
+                </svg>
               </button>
               <input
                 id="monthly-month"
@@ -272,7 +325,9 @@ const MeterDetail = ({
                 onClick={() => onMonthlyShift(1)}
                 disabled={monthlyMonth >= monthlyMaxMonth}
               >
-                ›
+                <svg className="shift-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9.3 18.7a1 1 0 0 1 0-1.4L14.6 12 9.3 6.7A1 1 0 0 1 10.7 5.3l6 6a1 1 0 0 1 0 1.4l-6 6a1 1 0 0 1-1.4 0Z" />
+                </svg>
               </button>
             </div>
           </div>
@@ -289,12 +344,14 @@ const MeterDetail = ({
                 onClick={() => onYearlyShift(-1)}
                 disabled={Number(yearlyYear) <= Number(yearlyMinYear)}
               >
-                ‹
+                <svg className="shift-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14.7 5.3a1 1 0 0 1 0 1.4L9.4 12l5.3 5.3a1 1 0 1 1-1.4 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.4 0Z" />
+                </svg>
               </button>
               <input
                 id="yearly-year"
                 type="number"
-                className="date-input date-input--compact"
+                className="date-input date-input--compact date-input--year"
                 value={yearlyYear}
                 min={yearlyMinYear}
                 max={yearlyMaxYear}
@@ -307,7 +364,9 @@ const MeterDetail = ({
                 onClick={() => onYearlyShift(1)}
                 disabled={Number(yearlyYear) >= Number(yearlyMaxYear)}
               >
-                ›
+                <svg className="shift-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9.3 18.7a1 1 0 0 1 0-1.4L14.6 12 9.3 6.7A1 1 0 1 1 10.7 5.3l6 6a1 1 0 0 1 0 1.4l-6 6a1 1 0 0 1-1.4 0Z" />
+                </svg>
               </button>
             </div>
           </div>
@@ -328,12 +387,12 @@ const MeterDetail = ({
 
         <div className="breakdown">
           <div>
-            <p className="muted">หน่วยเงิน</p>
-            <strong>{plant.currency}</strong>
+            <p className="muted">อัตรา 09:00 - 22:00</p>
+            <strong>{displayRate(customRateOn)} / kWh</strong>
           </div>
           <div>
-            <p className="muted">อัตราต่อ kWh</p>
-            <strong>{formatCurrency(meter.ratePerKwh, plant.currency)} / kWh</strong>
+            <p className="muted">อัตรา 22:00 - 09:00</p>
+            <strong>{displayRate(customRateOff)} / kWh</strong>
           </div>
         </div>
       </div>
