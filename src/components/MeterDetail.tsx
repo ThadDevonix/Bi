@@ -17,6 +17,19 @@ interface MeterDetailProps {
   billingUsage: number;
   billingCost: number;
   chartPoints: AggregatedPoint[];
+  dailyDate: string;
+  dailyMaxDate: string;
+  onDailyDateChange: (value: string) => void;
+  onDailyDateShift: (delta: number) => void;
+  monthlyMonth: string;
+  monthlyMaxMonth: string;
+  onMonthlyChange: (value: string) => void;
+  onMonthlyShift: (delta: number) => void;
+  yearlyYear: string;
+  yearlyMaxYear: string;
+  yearlyMinYear: string;
+  onYearlyChange: (value: string) => void;
+  onYearlyShift: (delta: number) => void;
   onRegisterExport?: (exporter: () => void) => void;
   theme: 'light' | 'dark';
 }
@@ -30,6 +43,19 @@ const MeterDetail = ({
   billingUsage,
   billingCost,
   chartPoints,
+  dailyDate,
+  dailyMaxDate,
+  onDailyDateChange,
+  onDailyDateShift,
+  monthlyMonth,
+  monthlyMaxMonth,
+  onMonthlyChange,
+  onMonthlyShift,
+  yearlyYear,
+  yearlyMaxYear,
+  yearlyMinYear,
+  onYearlyChange,
+  onYearlyShift,
   onRegisterExport,
   theme,
 }: MeterDetailProps) => {
@@ -42,6 +68,11 @@ const MeterDetail = ({
   const chartGrid = isDark ? '#223455' : '#d5dce7';
   const chartTicks = isDark ? '#d7e4ff' : '#4f5966';
   const tooltipText = isDark ? '#eaf1ff' : '#1f2730';
+  const xTickLimit = period === 'daily' ? 12 : period === 'monthly' ? 12 : 12;
+  const yearlyTotal = useMemo(
+    () => (period === 'yearly' ? chartPoints.reduce((sum, p) => sum + p.value, 0) : 0),
+    [chartPoints, period],
+  );
 
   const chartOptions: ChartOptions<'bar' | 'line'> = {
     responsive: true,
@@ -70,7 +101,13 @@ const MeterDetail = ({
       },
       x: {
         grid: { display: false },
-        ticks: { color: chartTicks },
+        ticks: {
+          color: chartTicks,
+          autoSkip: true,
+          maxTicksLimit: xTickLimit,
+          maxRotation: 0,
+          minRotation: 0,
+        },
       },
     },
   };
@@ -141,7 +178,9 @@ const MeterDetail = ({
   }, [onRegisterExport, handleExportPdf]);
 
   const ChartComponent = chartType === 'line' ? Line : Bar;
-  const chartKey = `${meter.id}-${chartType}-${theme}`;
+  const chartKey = `${meter.id}-${chartType}-${theme}-${
+    period === 'daily' ? dailyDate : period === 'monthly' ? monthlyMonth : yearlyYear
+  }`;
 
   return (
     <div className="meter-detail">
@@ -172,6 +211,116 @@ const MeterDetail = ({
         </div>
 
         <PeriodTabs value={period} onChange={onPeriodChange} />
+
+        {period === 'daily' ? (
+          <div className="inline-select-row date-shift-row">
+            <label htmlFor="daily-date">เลือกวัน</label>
+            <div className="date-shift-controls">
+              <button
+                type="button"
+                className="ghost shift-btn"
+                aria-label="วันก่อนหน้า"
+                onClick={() => onDailyDateShift(-1)}
+              >
+                ‹
+              </button>
+              <input
+                id="daily-date"
+                type="date"
+                className="date-input date-input--compact"
+                value={dailyDate}
+                max={dailyMaxDate}
+                onChange={(e) => onDailyDateChange(e.target.value)}
+              />
+              <button
+                type="button"
+                className="ghost shift-btn"
+                aria-label="วันถัดไป"
+                onClick={() => onDailyDateShift(1)}
+                disabled={dailyDate >= dailyMaxDate}
+              >
+                ›
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {period === 'monthly' ? (
+          <div className="inline-select-row date-shift-row">
+            <label htmlFor="monthly-month">เลือกเดือน</label>
+            <div className="date-shift-controls">
+              <button
+                type="button"
+                className="ghost shift-btn"
+                aria-label="เดือนก่อนหน้า"
+                onClick={() => onMonthlyShift(-1)}
+              >
+                ‹
+              </button>
+              <input
+                id="monthly-month"
+                type="month"
+                className="date-input date-input--compact"
+                value={monthlyMonth}
+                max={monthlyMaxMonth}
+                onChange={(e) => onMonthlyChange(e.target.value)}
+              />
+              <button
+                type="button"
+                className="ghost shift-btn"
+                aria-label="เดือนถัดไป"
+                onClick={() => onMonthlyShift(1)}
+                disabled={monthlyMonth >= monthlyMaxMonth}
+              >
+                ›
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {period === 'yearly' ? (
+          <div className="inline-select-row date-shift-row">
+            <label htmlFor="yearly-year">เลือกปี</label>
+            <div className="date-shift-controls">
+              <button
+                type="button"
+                className="ghost shift-btn"
+                aria-label="ปีก่อนหน้า"
+                onClick={() => onYearlyShift(-1)}
+                disabled={Number(yearlyYear) <= Number(yearlyMinYear)}
+              >
+                ‹
+              </button>
+              <input
+                id="yearly-year"
+                type="number"
+                className="date-input date-input--compact"
+                value={yearlyYear}
+                min={yearlyMinYear}
+                max={yearlyMaxYear}
+                onChange={(e) => onYearlyChange(e.target.value)}
+              />
+              <button
+                type="button"
+                className="ghost shift-btn"
+                aria-label="ปีถัดไป"
+                onClick={() => onYearlyShift(1)}
+                disabled={Number(yearlyYear) >= Number(yearlyMaxYear)}
+              >
+                ›
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {period === 'yearly' ? (
+          <div className="inline-select-row">
+            <div>
+              <p className="muted">รวมพลังงานปี {yearlyYear}</p>
+              <strong>{formatNumber(yearlyTotal)} kWh</strong>
+            </div>
+          </div>
+        ) : null}
 
         <div className="chart-wrapper">
           <ChartComponent key={chartKey} data={chartData} options={chartOptions} plugins={chartPlugins} />

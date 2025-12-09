@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { format as formatDate, isValid, parseISO, startOfDay } from 'date-fns';
+import { addDays, addMonths, format as formatDate, isValid, parseISO, startOfDay, startOfMonth } from 'date-fns';
 import { BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js';
 import './App.css';
 import PlantSelector from './components/PlantSelector';
@@ -22,6 +22,9 @@ function App() {
   const [selectedPlantId, setSelectedPlantId] = useState<string>(seedPlants[0]?.id ?? '');
   const [selectedMeterId, setSelectedMeterId] = useState<string>('');
   const [period, setPeriod] = useState<UsagePeriod>('daily');
+  const [dailyDate, setDailyDate] = useState<string>(() => formatDate(new Date(), 'yyyy-MM-dd'));
+  const [monthlyMonth, setMonthlyMonth] = useState<string>(() => formatDate(new Date(), 'yyyy-MM'));
+  const [yearlyYear, setYearlyYear] = useState<string>(() => formatDate(new Date(), 'yyyy'));
   const [view, setView] = useState<View>('plant');
   const [detailTab, setDetailTab] = useState<'chart' | 'billing'>('chart');
   const [theme, setTheme] = useState<Theme>('light');
@@ -60,9 +63,32 @@ function App() {
   const usageThisPeriod = selectedMeter && billingPeriod ? calculateTotalUsage(readingsThisPeriod) : 0;
   const costThisPeriod = selectedMeter && billingPeriod ? calculateCost(usageThisPeriod, selectedMeter.ratePerKwh) : 0;
 
+const selectedDailyDate = useMemo(() => {
+  const parsed = parseISO(dailyDate);
+  return isValid(parsed) ? parsed : new Date();
+}, [dailyDate]);
+
+const selectedMonthlyDate = useMemo(() => {
+  const parsed = parseISO(`${monthlyMonth}-01`);
+  return isValid(parsed) ? startOfMonth(parsed) : startOfMonth(new Date());
+}, [monthlyMonth]);
+
+const selectedYear = useMemo(() => {
+  const yearNum = Number(yearlyYear);
+  const thisYear = new Date().getFullYear();
+  if (!Number.isFinite(yearNum)) return thisYear;
+  return Math.min(Math.max(yearNum, YEAR_MIN), thisYear);
+}, [yearlyYear]);
+
   const chartPoints = useMemo(
-    () => (selectedMeter ? aggregateUsage(selectedMeter.readings, period) : []),
-    [period, selectedMeter],
+    () => (selectedMeter
+      ? aggregateUsage(selectedMeter.readings, period, {
+        day: selectedDailyDate,
+        month: selectedMonthlyDate,
+        year: selectedYear,
+      })
+      : []),
+    [period, selectedMeter, selectedDailyDate, selectedMonthlyDate, selectedYear],
   );
 
   useEffect(() => {
@@ -71,7 +97,73 @@ function App() {
     ChartJS.defaults.borderColor = theme === 'dark' ? '#233456' : '#d8cbb8';
   }, [theme]);
 
-  const toDateInputValue = (date: Date) => formatDate(date, 'yyyy-MM-dd');
+const toDateInputValue = (date: Date) => formatDate(date, 'yyyy-MM-dd');
+const toMonthInputValue = (date: Date) => formatDate(date, 'yyyy-MM');
+const toYearInputValue = (date: Date) => formatDate(date, 'yyyy');
+const todayInputValue = toDateInputValue(new Date());
+const currentMonthInputValue = toMonthInputValue(new Date());
+const currentYearInputValue = toYearInputValue(new Date());
+const YEAR_MIN = 2020;
+
+const handleDailyShift = (delta: number) => {
+  setDailyDate((prev) => {
+    const parsed = parseISO(prev);
+    const base = isValid(parsed) ? startOfDay(parsed) : startOfDay(new Date());
+      const next = startOfDay(addDays(base, delta));
+    const today = startOfDay(new Date());
+    const clamped = next.getTime() > today.getTime() ? today : next;
+    return toDateInputValue(clamped);
+  });
+};
+
+const handleMonthlyShift = (delta: number) => {
+  setMonthlyMonth((prev) => {
+    const parsed = parseISO(`${prev}-01`);
+    const base = isValid(parsed) ? startOfMonth(parsed) : startOfMonth(new Date());
+    const next = startOfMonth(addMonths(base, delta));
+    const thisMonth = startOfMonth(new Date());
+    const clamped = next.getTime() > thisMonth.getTime() ? thisMonth : next;
+    return toMonthInputValue(clamped);
+  });
+};
+
+const handleMonthlyChange = (value: string) => {
+  if (!value) {
+    setMonthlyMonth(currentMonthInputValue);
+    return;
+  }
+  const parsed = parseISO(`${value}-01`);
+  const thisMonth = startOfMonth(new Date());
+  if (!isValid(parsed)) {
+    setMonthlyMonth(currentMonthInputValue);
+    return;
+  }
+  const next = startOfMonth(parsed);
+  const clamped = next.getTime() > thisMonth.getTime() ? thisMonth : next;
+  setMonthlyMonth(toMonthInputValue(clamped));
+};
+
+const handleYearlyShift = (delta: number) => {
+  setYearlyYear((prev) => {
+    const parsedYear = Number(prev);
+    const base = Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear();
+    const next = base + delta;
+    const thisYear = new Date().getFullYear();
+    const clamped = Math.min(Math.max(next, YEAR_MIN), thisYear);
+    return String(clamped);
+  });
+};
+
+const handleYearlyChange = (value: string) => {
+  const next = Number(value);
+  const thisYear = new Date().getFullYear();
+  if (!Number.isFinite(next)) {
+    setYearlyYear(currentYearInputValue);
+    return;
+  }
+  const clamped = Math.min(Math.max(next, YEAR_MIN), thisYear);
+  setYearlyYear(String(clamped));
+};
 
   const customPeriod = useMemo(() => {
     if (!billingPeriod) return null;
@@ -111,6 +203,9 @@ function App() {
     setSelectedMeterId('');
     setView('meterList');
     setDetailTab('chart');
+    setDailyDate(formatDate(new Date(), 'yyyy-MM-dd'));
+    setMonthlyMonth(currentMonthInputValue);
+    setYearlyYear(currentYearInputValue);
     setTheme('light');
     exportHandlerRef.current = null;
     setExportReady(false);
@@ -140,6 +235,9 @@ function App() {
     setSelectedMeterId(meterId);
     setView('meterDetail');
     setDetailTab('chart');
+    setDailyDate(formatDate(new Date(), 'yyyy-MM-dd'));
+    setMonthlyMonth(currentMonthInputValue);
+    setYearlyYear(currentYearInputValue);
     exportHandlerRef.current = null;
     setExportReady(false);
     const meter = selectedPlant?.meters.find((m) => m.id === meterId);
@@ -254,6 +352,19 @@ function App() {
               meter={selectedMeter}
               period={period}
               onPeriodChange={setPeriod}
+              dailyDate={dailyDate}
+              dailyMaxDate={todayInputValue}
+              onDailyDateChange={setDailyDate}
+              onDailyDateShift={handleDailyShift}
+              monthlyMonth={monthlyMonth}
+              monthlyMaxMonth={currentMonthInputValue}
+              onMonthlyChange={handleMonthlyChange}
+              onMonthlyShift={handleMonthlyShift}
+              yearlyYear={yearlyYear}
+              yearlyMaxYear={currentYearInputValue}
+              yearlyMinYear={String(YEAR_MIN)}
+              onYearlyChange={handleYearlyChange}
+              onYearlyShift={handleYearlyShift}
               billingPeriod={billingPeriod}
               billingUsage={usageThisPeriod}
               billingCost={costThisPeriod}

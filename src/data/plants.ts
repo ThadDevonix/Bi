@@ -1,27 +1,57 @@
-import { formatISO, setHours, setMinutes, subDays } from 'date-fns';
+import { addDays, addMinutes, differenceInCalendarDays, formatISO, startOfDay } from 'date-fns';
 import type { Meter, Plant } from '../types';
 
-const generateReadings = (days: number, base: number, variance: number): Meter['readings'] => {
-  const readings = Array.from({ length: days }, (_, index) => {
-    const hour = Math.floor(Math.random() * 24); // กระจายเวลาให้มีทั้งช่วง 22:00-09:00 และ 09:00-22:00
-    const date = setHours(setMinutes(subDays(new Date(), index), 0), hour);
-    const swing = Math.sin(index / 5) * variance;
-    const noise = Math.random() * variance * 0.8;
-    const kwh = Math.max(8, base + swing + noise);
+const QUARTER_MINUTES = 15;
+const QUARTERS_PER_DAY = (24 * 60) / QUARTER_MINUTES;
+const START_YEAR = 2020;
+
+const generateQuarterHourReadings = (dayStart: Date, dailyTarget: number): Meter['readings'] => {
+  const basePerSlot = dailyTarget / QUARTERS_PER_DAY;
+  return Array.from({ length: QUARTERS_PER_DAY }, (_, slot) => {
+    const timestamp = addMinutes(dayStart, slot * QUARTER_MINUTES);
+    const peakWave = Math.sin((slot / QUARTERS_PER_DAY) * Math.PI * 2) * basePerSlot * 0.6;
+    const noise = (Math.random() - 0.5) * basePerSlot * 0.35;
+    const kwh = Math.max(0.05, basePerSlot + peakWave + noise);
     return {
-      timestamp: formatISO(date),
+      timestamp: formatISO(timestamp),
       kwh: parseFloat(kwh.toFixed(2)),
     };
   });
+};
 
-  return readings.reverse();
+const generateReadings = (base: number, variance: number): Meter['readings'] => {
+  const startDate = startOfDay(new Date(START_YEAR, 0, 1));
+  const today = startOfDay(new Date());
+  const totalDays = differenceInCalendarDays(today, startDate) + 1;
+  const readings: Meter['readings'] = [];
+
+  for (let index = 0; index < totalDays; index += 1) {
+    const day = addDays(startDate, index);
+    const swing = Math.sin(index / 5) * variance;
+    const noise = Math.random() * variance * 0.6;
+    const dailyTarget = Math.max(12, base + swing + noise);
+    const isMostRecentDay = differenceInCalendarDays(day, today) === 0;
+
+    if (isMostRecentDay) {
+      readings.push(...generateQuarterHourReadings(day, dailyTarget));
+    } else {
+      const hour = 8 + Math.floor(Math.random() * 10); // แรนดอมช่วงกลางวัน
+      const timestamp = addMinutes(day, hour * 60);
+      readings.push({
+        timestamp: formatISO(timestamp),
+        kwh: parseFloat(dailyTarget.toFixed(2)),
+      });
+    }
+  }
+
+  return readings;
 };
 
 const createMeter = (id: string, name: string, base: number, variance: number, ratePerKwh: number): Meter => ({
   id,
   name,
   ratePerKwh,
-  readings: generateReadings(210, base, variance),
+  readings: generateReadings(base, variance),
 });
 
 export const plants: Plant[] = [
