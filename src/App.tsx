@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { format as formatDate, isValid, parseISO, startOfDay } from 'date-fns';
 import { BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js';
 import './App.css';
@@ -14,6 +14,7 @@ import { formatCurrency, formatNumber, formatPeriod } from './utils/format';
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend);
 
 type View = 'plant' | 'meterList' | 'meterDetail';
+type Theme = 'light' | 'dark';
 
 function App() {
   const currencyOptions: Plant['currency'][] = ['THB', 'USD', 'EUR', 'JPY', 'AUD'];
@@ -23,6 +24,7 @@ function App() {
   const [period, setPeriod] = useState<UsagePeriod>('daily');
   const [view, setView] = useState<View>('plant');
   const [detailTab, setDetailTab] = useState<'chart' | 'billing'>('chart');
+  const [theme, setTheme] = useState<Theme>('light');
   const exportHandlerRef = useRef<(() => void) | null>(null);
   const [exportReady, setExportReady] = useState(false);
   const [customRateOn, setCustomRateOn] = useState<number | ''>(''); // 09:00-22:00
@@ -62,6 +64,12 @@ function App() {
     () => (selectedMeter ? aggregateUsage(selectedMeter.readings, period) : []),
     [period, selectedMeter],
   );
+
+  useEffect(() => {
+    document.body.classList.toggle('dark-mode', theme === 'dark');
+    ChartJS.defaults.color = theme === 'dark' ? '#e6edf9' : '#1f2730';
+    ChartJS.defaults.borderColor = theme === 'dark' ? '#233456' : '#d8cbb8';
+  }, [theme]);
 
   const toDateInputValue = (date: Date) => formatDate(date, 'yyyy-MM-dd');
 
@@ -103,6 +111,7 @@ function App() {
     setSelectedMeterId('');
     setView('meterList');
     setDetailTab('chart');
+    setTheme('light');
     exportHandlerRef.current = null;
     setExportReady(false);
     setCustomRateOn('');
@@ -166,20 +175,6 @@ function App() {
 
     return (
       <>
-        <div className="view-nav">
-          <div>
-            <p className="eyebrow">Plant ที่เลือก</p>
-            <h3>{selectedPlant.name}</h3>
-            {selectedPlant.location ? <p className="muted">{selectedPlant.location}</p> : null}
-          </div>
-          <div className="view-nav__actions">
-            <button type="button" className="back-btn" onClick={() => setView('plant')}>
-              <span>&lt;</span>
-              <span>ย้อนกลับ</span>
-            </button>
-          </div>
-        </div>
-
         <section className="panel">
           <div className="panel-head">
             <div className="step-chip">2</div>
@@ -227,22 +222,6 @@ function App() {
 
     return (
       <>
-        <div className="view-nav">
-          <div>
-            <p className="eyebrow">Plant / Meter</p>
-            <h3>
-              {selectedPlant.name} — {selectedMeter.name}
-            </h3>
-            {selectedPlant.location ? <p className="muted">{selectedPlant.location}</p> : null}
-          </div>
-          <div className="view-nav__actions">
-            <button type="button" className="back-btn" onClick={() => setView('meterList')}>
-              <span>&lt;</span>
-              <span>ย้อนกลับ</span>
-            </button>
-          </div>
-        </div>
-
         {isChartView ? (
           <section className="panel">
             <div className="panel-head">
@@ -279,6 +258,7 @@ function App() {
               billingUsage={usageThisPeriod}
               billingCost={costThisPeriod}
               chartPoints={chartPoints}
+              theme={theme}
               onRegisterExport={(fn) => {
                 exportHandlerRef.current = fn;
                 setExportReady(Boolean(fn));
@@ -384,6 +364,7 @@ function App() {
                         <label>วันที่เริ่ม</label>
                         <input
                           type="date"
+                          className="date-input"
                           value={customStart}
                           onChange={(e) => setCustomStart(e.target.value)}
                         />
@@ -392,6 +373,7 @@ function App() {
                         <label>วันที่สิ้นสุด</label>
                         <input
                           type="date"
+                          className="date-input"
                           value={customEnd}
                           onChange={(e) => setCustomEnd(e.target.value)}
                         />
@@ -442,6 +424,34 @@ function App() {
 
   return (
     <div className="page">
+      <div className={`topbar ${view !== 'plant' ? 'topbar--with-back' : ''}`}>
+        <div className="topbar-left">
+          {view !== 'plant' ? (
+            <button
+              type="button"
+              className="back-btn"
+              onClick={() => (view === 'meterDetail' ? setView('meterList') : setView('plant'))}
+            >
+              <span className="back-btn__icon">↩︎</span>
+              <span>ย้อนกลับ</span>
+            </button>
+          ) : null}
+        </div>
+        <div className="topbar-actions">
+          <label className="theme-switch">
+            <input
+              type="checkbox"
+              checked={theme === 'dark'}
+              onChange={(e) => setTheme(e.target.checked ? 'dark' : 'light')}
+            />
+            <span className="slider">
+              <span className="label-left" aria-hidden="true">☀</span>
+              <span className="label-right" aria-hidden="true">☾</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
       {view === 'plant' || !selectedPlant
         ? renderPlantSelection()
         : view === 'meterList'

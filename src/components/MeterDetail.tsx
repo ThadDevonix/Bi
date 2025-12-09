@@ -18,6 +18,7 @@ interface MeterDetailProps {
   billingCost: number;
   chartPoints: AggregatedPoint[];
   onRegisterExport?: (exporter: () => void) => void;
+  theme: 'light' | 'dark';
 }
 
 const MeterDetail = ({
@@ -30,9 +31,17 @@ const MeterDetail = ({
   billingCost,
   chartPoints,
   onRegisterExport,
+  theme,
 }: MeterDetailProps) => {
   const chartType = period === 'daily' ? 'line' : 'bar';
   const receiptRef = useRef<HTMLDivElement>(null);
+
+  const isDark = theme === 'dark';
+  // Use explicit palette to avoid stale CSS variable reads when toggling theme
+  const chartBackground = isDark ? '#121c32' : '#f3f6fb';
+  const chartGrid = isDark ? '#223455' : '#d5dce7';
+  const chartTicks = isDark ? '#d7e4ff' : '#4f5966';
+  const tooltipText = isDark ? '#eaf1ff' : '#1f2730';
 
   const chartOptions: ChartOptions<'bar' | 'line'> = {
     responsive: true,
@@ -40,6 +49,8 @@ const MeterDetail = ({
     plugins: {
       legend: { display: false },
       tooltip: {
+        titleColor: tooltipText,
+        bodyColor: tooltipText,
         callbacks: {
           label: (ctx) => {
             const value = ctx.parsed.y ?? 0;
@@ -51,10 +62,16 @@ const MeterDetail = ({
     scales: {
       y: {
         beginAtZero: true,
-        grid: { color: '#e2e8f0' },
-        ticks: { callback: (value) => `${value} kWh` },
+        grid: { color: chartGrid },
+        ticks: {
+          callback: (value) => `${value} kWh`,
+          color: chartTicks,
+        },
       },
-      x: { grid: { display: false } },
+      x: {
+        grid: { display: false },
+        ticks: { color: chartTicks },
+      },
     },
   };
 
@@ -65,19 +82,46 @@ const MeterDetail = ({
         {
           label: 'พลังงาน (kWh)',
           data: chartPoints.map((point) => point.value),
-          borderColor: period === 'daily' ? '#2563eb' : '#16a34a',
-          backgroundColor: period === 'daily' ? 'rgba(37, 99, 235, 0.12)' : 'rgba(22, 163, 74, 0.2)',
+          borderColor: period === 'daily' ? '#60a5fa' : '#34d399',
+          backgroundColor: period === 'daily'
+            ? isDark
+              ? 'rgba(96, 165, 250, 0.15)'
+              : 'rgba(37, 99, 235, 0.12)'
+            : isDark
+              ? 'rgba(52, 211, 153, 0.18)'
+              : 'rgba(22, 163, 74, 0.2)',
           borderWidth: 2,
           tension: 0.35,
         },
       ],
     }),
-    [chartPoints, period],
+    [chartPoints, isDark, period],
+  );
+
+  const chartPlugins = useMemo(
+    () => [
+      {
+        id: 'canvas-bg',
+        beforeDraw: (chart: any) => {
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return;
+          if (chart.canvas) {
+            chart.canvas.style.backgroundColor = chartBackground;
+          }
+          ctx.save();
+          ctx.fillStyle = chartBackground;
+          ctx.fillRect(0, 0, chart.width, chart.height);
+          ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+          ctx.restore();
+        },
+      },
+    ],
+    [chartBackground],
   );
 
   const handleExportPdf = useCallback(async () => {
     if (!receiptRef.current) return;
-    const canvas = await html2canvas(receiptRef.current, { scale: 2, backgroundColor: '#ffffff' });
+    const canvas = await html2canvas(receiptRef.current, { scale: 2, backgroundColor: chartBackground });
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -88,7 +132,7 @@ const MeterDetail = ({
 
     pdf.addImage(imgData, 'PNG', margin, margin, usableWidth, imgHeight);
     pdf.save(`${plant.name}-${meter.name}-invoice.pdf`);
-  }, [meter.name, plant.name]);
+  }, [chartBackground, meter.name, plant.name]);
 
   useEffect(() => {
     if (onRegisterExport) {
@@ -97,6 +141,7 @@ const MeterDetail = ({
   }, [onRegisterExport, handleExportPdf]);
 
   const ChartComponent = chartType === 'line' ? Line : Bar;
+  const chartKey = `${meter.id}-${chartType}-${theme}`;
 
   return (
     <div className="meter-detail">
@@ -105,7 +150,6 @@ const MeterDetail = ({
           <div>
             <p className="muted">มิเตอร์</p>
             <h2>{meter.name}</h2>
-            {plant.location ? <span className="pill muted">{plant.location}</span> : <span className="muted">{plant.name}</span>}
           </div>
         </div>
         <div className="detail-actions"></div>
@@ -130,7 +174,7 @@ const MeterDetail = ({
         <PeriodTabs value={period} onChange={onPeriodChange} />
 
         <div className="chart-wrapper">
-          <ChartComponent data={chartData} options={chartOptions} />
+          <ChartComponent key={chartKey} data={chartData} options={chartOptions} plugins={chartPlugins} />
         </div>
 
         <div className="breakdown">

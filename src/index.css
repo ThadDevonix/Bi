@@ -2,12 +2,57 @@
   font-family: 'Manrope', 'Sarabun', 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.6;
   font-weight: 500;
-  color: #0f172a;
-  background-color: #e5edff;
+  --bg: #e9eef5;
+  --text-color: #1c2430;
+  --muted-color: #5f6b7a;
+  --panel-bg: linear-gradient(135deg, #f6f8fc, #eef2f7);
+  --panel-solid: #f3f6fb;
+  --surface-bg: #f2f5fa;
+  --surface-strong-bg: #e8edf4;
+  --card-bg: linear-gradient(160deg, #f4f7fc, #edf2f9);
+  --card-strong-bg: linear-gradient(150deg, #e9f0fa, #e3ebf7);
+  --highlight-bg: linear-gradient(145deg, rgba(59, 125, 221, 0.14), rgba(59, 125, 221, 0.08));
+  --border-color: #d5dce7;
+  --divider-color: #d5dce7;
+  --primary: #3b7ddd;
+  --primary-strong: #2f6adf;
+  --pill-bg: #e6eefb;
+  --input-bg: #f6f8fc;
+  --nav-bg: #eef3f8;
+  --shadow: 0 16px 36px rgba(28, 36, 48, 0.12);
+  --shadow-strong: 0 18px 40px rgba(28, 36, 48, 0.18);
+  --chart-bg: #f3f6fb;
+  --switch-knob: #f9fbff;
+  color: var(--text-color);
+  background-color: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+body.dark-mode {
+  --bg: #0f172a;
+  --text-color: #e8efff;
+  --muted-color: #b8c4dd;
+  --panel-bg: linear-gradient(135deg, #17223a, #0f172a);
+  --panel-solid: #121c32;
+  --surface-bg: #151f35;
+  --surface-strong-bg: #1c2740;
+  --card-bg: linear-gradient(160deg, #1a2740, #111b2f);
+  --card-strong-bg: linear-gradient(150deg, #223254, #15243d);
+  --highlight-bg: linear-gradient(145deg, rgba(106, 164, 255, 0.2), rgba(79, 143, 240, 0.14));
+  --border-color: #223455;
+  --divider-color: #223455;
+  --primary: #6aa4ff;
+  --primary-strong: #4f8ff0;
+  --pill-bg: #1c2b46;
+  --input-bg: #1a2540;
+  --nav-bg: #131d33;
+  --shadow: 0 14px 36px rgba(4, 10, 22, 0.55);
+  --shadow-strong: 0 18px 42px rgba(4, 10, 22, 0.6);
+  --chart-bg: #121c32;
+  --switch-knob: #243557;
 }
 
 *,
@@ -19,10 +64,17 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at 20% 20%, rgba(79, 70, 229, 0.08), transparent 35%),
-    radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.08), transparent 35%),
-    #f7f9fd;
+  background: radial-gradient(circle at 20% 18%, rgba(91, 136, 197, 0.14), transparent 36%),
+    radial-gradient(circle at 80% 10%, rgba(255, 201, 120, 0.12), transparent 32%),
+    linear-gradient(180deg, #eef2f7 0%, #e5ebf4 100%);
   color: inherit;
+}
+
+body.dark-mode {
+  background: radial-gradient(circle at 18% 12%, rgba(126, 214, 255, 0.12), transparent 30%),
+    radial-gradient(circle at 82% 6%, rgba(167, 132, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, #0f172a 0%, #121c32 100%);
+  color: var(--text-color);
 }
 
 a {
